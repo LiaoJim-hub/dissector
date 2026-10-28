@@ -1446,6 +1446,12 @@ def chat(body: ChatIn):
     _echo = _layers_echo(_prev_assistant)
     if _echo:
         system = system + _echo
+        # ★★ 2026-10-28（A 自查）：把它**打到 stderr** ——
+        #   ★ 为什么：否则「H2 回显了」这件事**只能靠读代码**。
+        #   ★★ 而这一行让它变成**一个读数**（★ 本体系那条：能数的就该数出来）。
+        print("[H2] 上一轮层数已回显：" + _echo.strip().split(chr(10))[2].strip()
+              if len(_echo.strip().split(chr(10))) > 2 else "[H2] 已回显",
+              file=sys.stderr)
 
     # ★★ 本外发版**去掉了 `host_gate`**（★ 原件是 `core\host_gate.py`）——
     #   ★ 它管的是"护根**被谁改掉**之后不许假装还在"；★ 而本版的护根**只有一处真值**
