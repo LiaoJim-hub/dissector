@@ -1375,6 +1375,28 @@ def chat(body: ChatIn):
     s = _find_session(_load_sessions(), body.session_id)
     if not s:
         raise HTTPException(404, "会话不存在")
+    # ★★★★★ L1（2026-10-28 · A 自查 · 第二次挪位）：「输入太模糊」这一条**必须在 key 检查之前**。
+    #   ★ 病灶（实测撞到两次）：
+    #     ① 第一版它在 gen() 里判 —— 而 gen() 在 key 检查**之后**才被调用
+    #        ⇒ **没有 key 时它永远到不了**。
+    #     ② 第二版我用 key = get_api_key() 做锚 —— ★ 而那个锚在 /api/test 里**也有一份**，
+    #        于是一整块被插进了 	est_conn()（★ 那个函数**没有 ody**）⇒ 死代码。
+    #   ★★ 而它**该在这里**，理由是语义的：兜底 (b)「就这样，我帮你把这句本身摆正」
+    #      **本来就不需要模型** ⇒ 它不该被 key 那道门挡住。
+    #   ★★★ 故：**紧贴 if not s: 之后、key = get_api_key() 之前**。
+    _too_vague, _vague_why = _is_too_vague(body.message)
+    if _too_vague:
+        _vr = _vague_reply(body.message, _vague_why)
+
+        def _vg():
+            yield f'data: {json.dumps({"delta": _vr}, ensure_ascii=False)}\n\n'
+            yield f'data: {json.dumps({"done": True, "to_vague": True}, ensure_ascii=False)}\n\n'
+
+        # ★ 而它**不落账**：那一轮没有产生拆解，把一句「我没听懂」记成一轮对话会把账弄脏。
+        return StreamingResponse(_vg(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
     key = get_api_key()
     if not key:
         raise HTTPException(400, NO_KEY_MSG)
@@ -1394,14 +1416,15 @@ def chat(body: ChatIn):
     #     （★ 因为**只有这里手上有用户原文** —— ★ 账里只存指纹，★ 原文不落盘）。
     _乱读, _乱纪 = _乱纪律(body.message)
     # ══════════════════════════════════════════════════════════════════════
-    # ★★★ L1（2026-10-28 · 依那份《自动拦你》的第一个建议）：
-    #   输入不足以定位"卡在哪一句" ⇒ **不拆三层，问回一句，并给两条路**。
-    #   ★ 为什么它排在最后做：它**会误伤**，而误伤的代价比"少拆一轮"高。
-    #   ★★ 而它的判据刻意窄（见 `_is_too_vague` 的三条）——
-    #      「否则它天天卡人，卡几次就被人绕过。」（那份报告逐字）
-    #   ★★★ 而它**不是拒绝**：那条回复里必须有 (b)「就这样，我帮你把这句本身摆正」。
+    # ★★★ L1 的**位置**（2026-10-28 · A 自查 · 已上移到 key 检查之前）
+    #
+    #   ★ 病灶（实测撞到）：`_is_too_vague` 原本在这里判（★ 而这里在 key 检查**之后**）
+    #     ⇒ **没有 key 时，流在第 1378 行就被拒了 ⇒ L1 永远到不了。**
+    #   ★★ 而那不是"位置没选好"，是**语义错了**：
+    #     L1 的兜底 (b)「就这样，我帮你把这句本身摆正」**本来就不需要模型**。
+    #   ★★★ 故它已经移到 `key = get_api_key()` 之前（见上面那段 `_too_vague` 的分支）。
+    #     ★ 这里只留这一行注释，**不再重复判**（两处判必漂）。
     # ══════════════════════════════════════════════════════════════════════
-    _too_vague, _vague_why = _is_too_vague(body.message)
 
     system, _sys_bd = build_system_prompt(body.session_id, bool(body.protector),
                                          乱纪律=_乱纪, return_breakdown=True)
@@ -1514,16 +1537,6 @@ def chat(body: ChatIn):
 
     def gen():
         acc = []
-        # ★★★ L1（2026-10-28）：输入不够 ⇒ **不调模型**，直接把那句问回话发出去。
-        #   ★ 为什么在这里而不在端点开头：因为**它也是一次 SSE 输出**（它要走同一条流）。
-        #   ★★ 而它**不落账**（不进 sessions.json）—— 因为那一轮**没有产生拆解**，
-        #      而把一句“我没听懂”记成一轮对话，会把账弄脏。
-        if _too_vague:
-            _vr = _vague_reply(body.message, _vague_why)
-            acc.append(_vr)
-            yield f'data: {json.dumps({"delta": _vr}, ensure_ascii=False)}\n\n'
-            yield f'data: {json.dumps({"done": True, "to_vague": True}, ensure_ascii=False)}\n\n'
-            return
         # ★★★ H1 闸（2026-10-28 · 依思考台第 ④ 条）：**开闸之前不往外发**，只累积。
         #   ★ 为什么：`yield` 出去的字节**收不回** —— 故"先发后判"永远只能记账。
         #   ★★ 而整段缓冲会白屏 20-40 秒 ⇒ 故只等到「路」那一段出现就开闸。
