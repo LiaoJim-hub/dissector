@@ -1032,6 +1032,29 @@ _LAYER_MARKS = (
 )
 
 
+#: ★★★ H1 闸的阈值（2026-10-28 · 依思考台第 ④ 条）。
+#:
+#:   ★ 为什么是 900：按这个产品的三层结构，「路」通常在最后 1/3；
+#:     而 900 字大约是「问 + 面」写完的长度。超过 900 仍无「路」⇒ 判它**注定不会出现**，
+#:     开闸并**如实说"这一轮我没拆到路"**（★ 而不是让用户以为它还在写）。
+#:   ★★ 而这个数是**可调的**，它不承诺任何精度 —— 它只决定"等多久"。
+_GATE_MAX_CHARS = 900
+
+#: ★ 「路」那一层的标记词（★ 与 `_LAYER_MARKS` 里的「路」同源 —— 不另立一套）。
+_GATE_ROAD_WORDS = ("几条路", "这条路的代价", "一条路是", "路：", "代价是", "可以停")
+
+
+def _hit_road(text: str) -> bool:
+    """★ 「路」这一层**出现过没有**（★ 不是"写好没有" —— 后者判不了，见思考台问 2）。"""
+    return any(w in text for w in _GATE_ROAD_WORDS)
+
+
+def _gate_missing_note() -> str:
+    """★ 开闸时若因"注定没有路" ⇒ 如实补一句。★ 那是**记账**，不是判断。"""
+    return ("\n\n★ 这一轮我**没拆到「路」**（这一层没出现，不是你漏看了）。"
+            "你要 (a) 把话再往下说一句，还是 (b) 就先到这里？")
+
+
 def _build_account(user_text: str, answer_text: str, session_id: str | None) -> dict:
     """★ 一次拆解的「账的形状」—— 只放**能核的**，不放进任何结论。
 
@@ -1328,6 +1351,12 @@ def chat(body: ChatIn):
 
     def gen():
         acc = []
+        # ★★★ H1 闸（2026-10-28 · 依思考台第 ④ 条）：**开闸之前不往外发**，只累积。
+        #   ★ 为什么：`yield` 出去的字节**收不回** —— 故"先发后判"永远只能记账。
+        #   ★★ 而整段缓冲会白屏 20-40 秒 ⇒ 故只等到「路」那一段出现就开闸。
+        #   ★★★ 而「问」「面」写错仍判不了 —— 那道闸**承认自己只有这一档精度**（不假装）。
+        _gate_open = False
+        _gate_sent = 0
 
         # ★★★ B-36：定义提到这里 —— 因为**失败出口在它之前**（实测：call :1328 < def :1427）
         #   ★ 若不提，失败路径会 NameError ⇒ **失败轮永远不落账**，比不修还坏。
@@ -1418,7 +1447,35 @@ def chat(body: ChatIn):
                             _trunc_round = tool_rounds
                         if delta.get("content"):
                             acc.append(delta["content"])
-                            yield f'data: {json.dumps({"delta": delta["content"]}, ensure_ascii=False)}\n\n'
+                            # ══════════════════════════════════════════════════
+                            # H1 闸（2026-10-28 · 依思考台第 ④ 条）
+                            #
+                            #   开闸条件（二者之一）：
+                            #     ① 累积文本里**出现「路」的标记词** ⇒ 三层都着落了
+                            #     ② 累积到 _GATE_MAX_CHARS 仍无「路」⇒ 判它**注定不会出现**
+                            #
+                            #   ★ 开闸之前：**一个字都不发**（★ 否则收不回）
+                            #   ★★ 开闸那一刻：把**已累积的全部一次性发出**（★ 用户看到的是一整段，
+                            #      而不是"它卡住了"）
+                            #   ★★★ 而②那条开闸时**必须补一句"没拆到路"** —— 那是记账，不是判断
+                            # ══════════════════════════════════════════════════
+                            if _gate_open:
+                                yield f'data: {json.dumps({"delta": delta["content"]}, ensure_ascii=False)}\n\n'
+                            else:
+                                _sofar = "".join(acc)
+                                _why = None
+                                if _hit_road(_sofar):
+                                    _why = "hit"
+                                elif len(_sofar) >= _GATE_MAX_CHARS:
+                                    _why = "give_up"
+                                if _why:
+                                    _gate_open = True
+                                    _payload = _sofar
+                                    if _why == "give_up":
+                                        _payload += _gate_missing_note()
+                                        acc.append(_gate_missing_note())
+                                    _gate_sent = len(_payload)
+                                    yield f'data: {json.dumps({"delta": _payload}, ensure_ascii=False)}\n\n'
                 # ★★★ 本外发版：**没有工具** ⇒ 一轮即收束。
                 #   ★ 原版此处是「汇聚 tool_calls → 不空则进工具轮 → 派发」的整块逻辑；
                 #     ★ 依 A《核对·最精简版与相干波束》§2.1 第 1 条：★ **工具的提示词与派发必须同删**
@@ -1429,6 +1486,18 @@ def chat(body: ChatIn):
             _persist_round(False, "请求中断")
             yield f'data: {json.dumps({"error": f"请求中断：{e}"}, ensure_ascii=False)}\n\n'
             return
+
+        # ★★★ H1（2026-10-28）：**流结束了而闸还没开** ⇒ 必须把累积的全发出去。
+        #   ★ 为什么这条必须有：若模型的回答**从头到尾没有「路」**且**短于 _GATE_MAX_CHARS**
+        #     （例如它只说了「问」和「面」就停了），那上面两个开闸条件**一条都不触发** ⇒
+        #     ★★ **用户会看到一片空白** —— 那比"缺路"坏得多（★ 那是"什么都没有"）。
+        #   ★ 故这里兜底：**把累积的全发，并如实补一句"没拆到路"**。
+        if not _gate_open and acc:
+            _tail = "".join(acc) + _gate_missing_note()
+            acc.append(_gate_missing_note())
+            _gate_open = True
+            yield f'data: {json.dumps({"delta": _tail}, ensure_ascii=False)}\n\n'
+            print("[gate] ★ 闸到流结束才开：这一轮没出现「路」（★ 已如实补一句）", file=sys.stderr)
 
 # 落档（行使史）—— ★ B-36：成功与失败**同走一个函数**
         # 落档（行使史）
