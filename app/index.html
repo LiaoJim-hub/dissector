@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拆解器 · 帮你看清问题</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --line:#e4e7ec; --txt:#1f2430; --sub:#6b7280;
+  --accent:#2f6fed; --accent-soft:#e8effd; --root:#0d7a5f; --root-soft:#e2f4ee;
+  --root-line:#b7e3d5;
+  --warn:#b45309; --warn-soft:#fdf1e0; --warn-line:#ecd3a8;
+  --strong:#111827; --th-txt:#1e4bb8; --td-line:#d8dfe9; --row-alt:#fafbfd;
+  --danger:#c0392b; --danger-soft:#fde8e8;
+  --pre-bg:#f2f4f8;
+  --shadow:0 1px 2px rgba(20,25,40,.045), 0 1px 12px rgba(20,25,40,.03);
+}
+body.dark{
+  --bg:#141821; --panel:#1c2230; --line:#2c3444; --txt:#e5e9f2; --sub:#8b93a5;
+  --accent:#5b8bf7; --accent-soft:#24314f; --root:#3ecfa5; --root-soft:#17362d;
+  --root-line:#2b5b4a;
+  --warn:#d9a04a; --warn-soft:#3a2f1c; --warn-line:#5a4526;
+  --strong:#f2f5fb; --th-txt:#9db9f9; --td-line:#333d52; --row-alt:#212837;
+  --danger:#e07060; --danger-soft:#3a2422;
+  --pre-bg:#1a202c;
+  --shadow:0 1px 2px rgba(0,0,0,.25), 0 1px 12px rgba(0,0,0,.16);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;overflow:hidden;transition:background .15s}
+/* ---------- 侧栏 ---------- */
+#side{width:246px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0}
+.brand{padding:16px 16px 12px;border-bottom:1px solid var(--line)}
+.brand h1{font-size:17px;letter-spacing:1px}
+.brand p{font-size:11px;color:var(--sub);margin-top:4px;line-height:1.5}
+#newBtn{margin:12px 14px 6px;padding:9px;border:1px dashed var(--accent);border-radius:8px;background:var(--accent-soft);color:var(--accent);font-size:13px;cursor:pointer;text-align:center}
+#newBtn:hover{filter:brightness(.97)}
+#sessList{flex:1;overflow-y:auto;padding:4px 8px}
+.sessHead{padding:10px 10px 3px;font-size:11px;color:var(--sub);letter-spacing:.5px}
+.sess{padding:9px 10px;border-radius:8px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.sess:hover{background:var(--bg)}
+.sess.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.sess .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess .more{opacity:0;font-size:15px;line-height:1;flex-shrink:0;padding:2px 6px;border-radius:5px;color:var(--sub)}
+.sess:hover .more,.sess.on .more{opacity:.75}
+.sess .more:hover{opacity:1;background:var(--accent-soft);color:var(--accent)}
+#sideFoot{padding:10px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--sub);display:flex;justify-content:space-between;align-items:center;gap:8px}
+#cfgBtn{cursor:pointer;color:var(--accent)}
+#themeBtn{cursor:pointer}
+/* ---------- 主区 ---------- */
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#top{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#tierTag{font-size:12px;color:var(--warn);border:1px solid var(--warn-line);background:var(--warn-soft);padding:4px 11px;border-radius:8px;font-weight:600;
+  cursor:pointer;user-select:none}  /* ★ 可点：点它 = 切换档位（与 composer 勾选框同一状态的两面） */
+#phaseTag{font-size:11.5px;color:var(--sub);font-family:Consolas,monospace}
+.tbtn{font-size:12px;color:var(--sub);cursor:pointer;padding:5px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.tbtn:hover{color:var(--accent);border-color:var(--accent)}
+#topStatus{margin-left:auto;font-size:12px;color:var(--sub)}
+#topStatus b{color:var(--root)}
+
+/* ════════════════════════════════════════════════════════════
+   ★★ 桌面版打磨（2026-10-12 · 迁自电商顾问那批通用交互改进）
+   ════════════════════════════════════════════════════════════ */
+/* ★ 滚动吸附：只在"本来就贴着底部"时才自动滚 ——
+     ★ 否则流式期间用户往上翻历史，每个字都把人拽回底部（电商顾问 P0-1 同款病）。
+     ★ 不贴底时右下角亮「↓ 回到最新」，点了才滚。 */
+#jumpBtn{position:fixed;right:26px;bottom:110px;display:none;padding:8px 16px;border-radius:20px;
+  border:1px solid var(--line);background:var(--panel);color:var(--accent);font-size:13px;cursor:pointer;
+  box-shadow:var(--shadow);z-index:5}
+#jumpBtn.show{display:block}
+/* ★ 首 token 前的"正在思考…"（★ 首 delta 到达即被正文覆盖，自然消失 —— 不用专门清理） */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;
+  vertical-align:-2px;margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ★ 键盘可达性：tab 到哪儿亮到哪儿（电商顾问 P2-15） */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+/* ★ 窄屏（≤900px）：侧栏变抽屉（默认收起，点 ☰ 开）—— 拆解器原先完全没有响应式 */
+#sideToggle{display:none;position:fixed;top:10px;left:10px;z-index:61;width:36px;height:36px;
+  border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--txt);
+  font-size:17px;cursor:pointer;box-shadow:var(--shadow);align-items:center;justify-content:center}
+@media (max-width:900px){
+  #sideToggle{display:flex}
+  #side{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-102%);
+        transition:transform .18s ease;box-shadow:var(--shadow)}
+  body.side-open #side{transform:none}
+  #chat{padding:24px 16px 40px}
+}
+#chat{flex:1;overflow-y:auto;padding:30px 32px 40px;display:flex;flex-direction:column;gap:20px}
+#empty{margin:auto;text-align:center;color:var(--sub);max-width:580px}
+#empty h2{font-size:21px;color:var(--txt);margin-bottom:14px;font-weight:600;letter-spacing:.5px}
+#empty p{font-size:14px;line-height:2.1}
+/* ★★★★★ 2026-10-13 加（★ 出处：《优化建议》第 7 条 · ★ 分层降显）：
+   · `.entry` —— ★ **入口那一句**（★ 给人看的 · ★ 比说明书大一档、★ 用正文色）
+   · `.muted` —— ★ **边界那一段**（★ 要时再看 · ★ 用淡色，★ 不抢入口） */
+#empty p.entry{font-size:15px;color:var(--txt);line-height:2;margin-bottom:4px}
+#empty .muted{color:var(--sub);opacity:.82}
+#empty .hint{margin-top:16px;font-size:13px;color:var(--sub);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;text-align:left;line-height:2}
+.msg{max-width:52em;word-break:break-word}
+.msg.user{align-self:flex-end;background:var(--accent);color:#fff;padding:13px 19px;border-radius:16px 16px 4px 16px;font-size:15px;line-height:1.9;white-space:pre-wrap}
+.msg.ai{align-self:flex-start;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:22px 28px;border-radius:4px 16px 16px 16px;font-size:15.5px}
+.msg.ai.prot{border-color:var(--warn-line);background:var(--warn-soft)}
+.msg .meta{font-size:12px;color:var(--sub);margin-bottom:12px;letter-spacing:.3px}
+
+/* ══════════════════════════════════════════════════════════════════
+   ★★★ 正文排版（★ 可读性的全部落点都在这一段）
+   ★ 目标（用户面）：一屏之内**看得出层次**、**找得到停靠点**、**读起来不喘**。
+   ★ 手段只有四个：① 竖直节奏（段距 > 行距）② 标题与正文的对比度
+     ③ 列表的悬挂缩进（换行不顶到数字下面）④ 中文引号与标点（见 JS 的 typo()）。
+   ★★ 一条纪律：**行距与段距要成比例**（1.95 行距配 13px 段距）——
+      ★ 段距 ≤ 行距时，段落会"糊成一片"（这是最常见的可读性病）。
+   ══════════════════════════════════════════════════════════════════ */
+.msg .body{white-space:normal;line-height:1.95;letter-spacing:.012em;
+           font-family:"Microsoft YaHei UI","PingFang SC",-apple-system,sans-serif}
+.msg .body > *:first-child{margin-top:0}
+.msg .body > *:last-child{margin-bottom:0}
+.msg .body p{margin:0 0 13px}
+.msg .body b,.msg .body strong{font-weight:700;color:var(--strong)}
+
+/* 标题：与正文拉开对比（字重 + 字号 + 上方留白）
+   ★★ 本场景的正文恰是「**问** / **面** / **路**」三个加粗短行 —— 它们是**段落的骨**，
+     ★ 故给它们**独立成块**的待遇：上面留白翻倍、可选左侧色条（见 .msghd）。 */
+.msg .body h3,.msg .body h4,.msg .body h5,.msg .body h6{
+  font-weight:700;color:var(--strong);line-height:1.6;margin:22px 0 10px}
+.msg .body h3{font-size:17.5px}
+.msg .body h4{font-size:16.5px}
+.msg .body h5,.msg .body h6{font-size:15.5px}
+.msg .body hr{border:0;border-top:1px solid var(--line);margin:22px 0}
+
+/* ★★ 段落级小标题（**问** / **面** / **路** 这种"独行加粗"）——
+   ★ 它由 JS 的 promoteHead() 识别后**套一层 <p class="msghd">**。
+   ★★ 为什么值得单做：这种行在模型输出里**极常见**（中文回答尤其），
+     ★ 若当普通段落渲染，它就"掉进正文里"了 —— 读者要靠猜才知道那是分节。 */
+.msg .body p.msghd{
+  margin:24px 0 12px;padding-left:12px;border-left:4px solid var(--accent);
+  font-size:16.5px;font-weight:700;color:var(--strong);line-height:1.6}
+.msg .body p.msghd:first-child{margin-top:0}
+
+/* 列表：★★ 悬挂缩进（★ 换行时文字**对齐到正文**，不顶到序号下面 —— 这是列表可读性的关键）
+   ★ 用 padding-left + negative text-indent 实现，而不是只用 padding。 */
+.msg .body ul,.msg .body ol{margin:6px 0 14px;padding-left:0;list-style:none}
+.msg .body li{position:relative;padding-left:2.3em;margin:0 0 9px;line-height:1.9}
+.msg .body li::before{
+  position:absolute;left:0;top:0;width:1.7em;text-align:right;
+  color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+.msg .body ul > li::before{content:"·";font-size:1.35em;line-height:1.41}
+.msg .body ol{counter-reset:oli}
+.msg .body ol > li{counter-increment:oli}
+.msg .body ol > li::before{content:counter(oli) "." ;font-size:.95em;line-height:2}
+.msg .body li > ul,.msg .body li > ol{margin:8px 0 4px}
+
+/* 表格 */
+.msg .body table{border-collapse:collapse;margin:14px 0;font-size:14px;line-height:1.7;display:block;overflow-x:auto;max-width:100%}
+.msg .body th{background:var(--accent-soft);color:var(--th-txt);font-weight:700;text-align:left;white-space:nowrap}
+.msg .body th,.msg .body td{border:1px solid var(--td-line);padding:9px 14px;vertical-align:top}
+.msg .body tr:nth-child(even) td{background:var(--row-alt)}
+.msg .body code{background:var(--pre-bg);border:1px solid var(--line);padding:2px 6px;border-radius:5px;font-family:Consolas,monospace;font-size:13.5px}
+.msg .body pre{background:var(--pre-bg);border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin:14px 0;overflow-x:auto;line-height:1.65}
+.msg .body pre code{background:none;border:0;padding:0}
+.msg .body blockquote{
+  margin:14px 0;padding:10px 18px;border-left:3px solid var(--root-line);
+  color:var(--sub);background:var(--root-soft);border-radius:0 10px 10px 0;line-height:1.9}
+
+/* ★★ 落款：两行是**凭据**，不是正文 —— 故：小一号、灰、与正文之间用一道虚线分开、
+     ★ 第一行允许换行（原文案很长，硬撑一行会横向溢出）。 */
+.msg .foot{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line);
+           font-size:12px;color:var(--sub);line-height:1.9}
+.msg .foot > span,.msg .foot > div{display:block}
+.msg .foot .warnline{color:var(--warn);font-weight:600}
+
+/* ★★★★ 分级降显（★ 2026-10-12 加 · ★ 出处：持有方"不必全部都显式重复输出"）
+   ★ 起因：★ 那两份真实导出里，**每一轮**都有同样两段 ——
+     ★「**可能还没看见的那一面。**」· ★「**几条路，只列，不选。**」
+   ★★ 判据：★ 它们**不是这一轮的内容**，★ 是**每轮都来的固定结构** ⇒
+     ★ 读的人会把它读成"又一段话"，★ 于是真正的内容被埋掉。
+   ★★★ 分级（★ 三级，★ 各行其位）：
+     · 正文 = 全字号全色            ← ★ 这一轮的实质（含"这句话有几面"那一层）
+     · 补充 = 小字 · 淡 · 左边一道细线   ← "可能还没看见的那一面"（★ 仍可读，★ 但不再抢正文）
+     · 几条路 = 折起来（★ `<details>`）  ← ★ 想看就展开、★ 不想看就不占地方
+   ★★★★ 而**凭据（落款两行）不进任何一级** —— ★ 它是**凭据不是正文**，★ 单独一块、永远可见。 */
+.msg .extra{margin:14px 0 0;padding:2px 0 2px 12px;border-left:2px solid var(--line);
+            font-size:12.5px;color:var(--sub);line-height:1.95}
+.msg .extra p{margin:0 0 6px}
+.msg .roads{margin:14px 0 0}
+.msg .roads summary{cursor:pointer;font-size:12.5px;color:var(--sub);
+                    list-style:none;user-select:none}
+.msg .roads summary::-webkit-details-marker{display:none}
+.msg .roads summary::before{content:"▸ ";opacity:.7}
+.msg .roads[open] summary::before{content:"▾ "}
+.msg .roads summary:hover{color:var(--text)}
+.msg .roads .rb{margin-top:6px;padding:2px 0 2px 12px;border-left:2px solid var(--line);
+                font-size:12.5px;color:var(--sub);line-height:1.95}
+.msg .roads .rb p{margin:0 0 6px}
+/* ★★★★ 护根开关（★ 2026-10-12 加 · ★ 出处：持有方判《判断·护根该不该是唯一档位》）
+   ★ 判据：★ **护根只能由用户显式开** —— ★ 依装载件 `:509` 逐字：
+     「★ **护根模式（用户说出「进入护根模式」）**」⇒ ★★ **它是一个动作，不是一个默认值。**
+   ★★ 故：★ **默认不勾** · ★ 样式**刻意低调**（★ 它是个档位，★ 不是号召）。 */
+#protWrap{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);
+          user-select:none;cursor:pointer;white-space:nowrap;padding:0 2px}
+#protWrap:hover{color:var(--text)}
+#protWrap input{accent-color:var(--accent);cursor:pointer}
+/* ---------- 输入区 ---------- */
+#composer{border-top:1px solid var(--line);background:var(--panel);padding:12px 20px 16px;display:flex;gap:10px;align-items:flex-end}
+
+/* ★★ 未配置 Key 的常驻提示条（★ 用户面检查报告 P2-2）——
+   ★★ 关键：把"怎么填 key"这条正确指引**前置到用户被 400 拦下之前**。
+   ★ 它**不是**装饰：没有 key 时，用户打的每一个字都注定被拒 ⇒ 必须在他打字前就告诉他。 */
+#nokey{display:none;background:var(--warn-soft);border:1px solid var(--warn-line);
+       border-bottom:0;color:var(--warn);font-size:13px;line-height:1.85;
+       padding:12px 20px}
+#nokey.show{display:block}
+#nokey b{color:var(--warn)}
+#nokey code{background:rgba(180,83,9,.1);border:1px solid var(--warn-line);border-radius:4px;padding:1px 5px;font-family:Consolas,monospace;font-size:12.5px}
+#nokey .x{float:right;cursor:pointer;opacity:.65;padding:0 4px;font-size:15px;line-height:1.2}
+#nokey .x:hover{opacity:1}
+
+#inp{flex:1;min-height:54px;max-height:220px;resize:none;border:1px solid var(--line);border-radius:10px;padding:13px 15px;font-size:15px;font-family:inherit;background:var(--bg);color:var(--txt);outline:none;line-height:1.75}
+#inp:focus{border-color:var(--accent)}
+#send{padding:13px 24px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:14.5px;cursor:pointer;flex-shrink:0}
+#send:disabled{opacity:.5;cursor:default}
+#stop{padding:13px 17px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--sub);font-size:14.5px;cursor:pointer;flex-shrink:0}
+/* ---------- 设置弹层 / toast ---------- */
+#mask{position:fixed;inset:0;background:rgba(15,20,30,.4);display:none;align-items:center;justify-content:center;z-index:70}
+#mask.show{display:flex}
+#cfg{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(520px,92vw);padding:22px 24px;max-height:86vh;overflow-y:auto}
+#cfg h3{font-size:16px;margin-bottom:6px}
+#cfg .sub{font-size:12px;color:var(--sub);line-height:1.8;margin-bottom:14px}
+#cfg label{display:block;font-size:12.5px;color:var(--sub);margin:12px 0 4px}
+#cfg input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;background:var(--bg);color:var(--txt);outline:none;font-family:inherit}
+#cfg input:focus{border-color:var(--accent)}
+#cfg .row{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap}
+#cfg .btn{padding:8px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--txt);font-size:13px;cursor:pointer}
+#cfg .btn.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+#testOut{margin-top:10px;font-size:12.5px;color:var(--sub);line-height:1.8;white-space:pre-wrap}
+#toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:9px 18px;font-size:13px;z-index:90;display:none;max-width:70vw}
+.menu{position:fixed;z-index:80;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(15,20,30,.16);padding:5px;display:none;min-width:132px}
+.menu.show{display:block}
+.menu .mi{padding:8px 12px;font-size:13px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.menu .mi:hover{background:var(--bg)}
+.menu .mi.danger{color:var(--danger)}
+</style>
+</head>
+<body>
+
+<!-- ★ 窄屏（≤900px）才显示：侧栏抽屉开关 -->
+<button id="sideToggle" title="打开 / 收起侧栏">☰</button>
+
+<aside id="side">
+  <div class="brand">
+    <h1>拆解器</h1>
+    <p>帮你看清问题 · 不替你下结论</p>
+  </div>
+  <div id="newBtn">＋ 新对话</div>
+  <div id="sessList"></div>
+  <div id="sideFoot">
+    <span id="themeBtn" title="切换明/暗">🌗</span>
+    <span id="cfgBtn">设置</span>
+  </div>
+</aside>
+
+<main id="main">
+  <div id="top">
+    <span id="tierTag" title="档位由下面那个「护根」开关决定：不勾 = 工作模式，勾上 = 护根">档位：工作模式</span>
+    <span id="phaseTag" title="相位规则指纹 = 场景层位表的 sha256 前 8 位">相位 —</span>
+    <button class="tbtn" id="exportBtn">导出这段对话</button>
+    <span id="topStatus"></span>
+  </div>
+  <div id="chat"></div>
+  <button id="jumpBtn" title="回到最新一条">↓ 回到最新</button>
+  <div id="nokey">
+    <span class="x" id="nokeyX" title="收起">×</span>
+    <b>还没有配 API Key</b> —— 现在发问会被拒（服务端会如实报，不会装死）。填法三步：
+    ① 把本目录的 <code>_env.example</code> 复制一份、改名成 <code>.env.local</code>；
+    ② 打开它，在 <code>DEEPSEEK_API_KEY=</code> 后面贴上你的 key，保存；
+    ③ 回启动窗口关掉，再双击一次 <code>启动.bat</code>。
+    <br>★ <code>.env.local</code> 要和 <code>启动.bat</code> 放<b>同一层</b>（不要放进 <code>app\</code> 里）。
+  </div>
+  <div id="composer">
+    <textarea id="inp" placeholder="你现在在哪里？（把卡住你的那句话原样打进来）"></textarea>
+    <label id="protWrap" title="勾上 = 只描述、不评价、不给答案；不勾 = 正常工作模式"><input type="checkbox" id="prot"><span>护根</span></label>
+    <button id="stop" hidden>停止</button>
+    <button id="send">发送</button>
+  </div>
+</main>
+
+<div class="menu" id="sessMenu"></div>
+
+<div id="mask">
+  <div id="cfg">
+    <h3>设置</h3>
+    <div class="sub">
+      ★ <b>怎么设 Key</b>：填在下面那一栏、点保存即可（★ 存到本目录的 <code>config.local.json</code>，
+      <b>不进仓库、不上传</b>）。<br>
+      ★★ <b>为什么这个框是安全的</b>：保存时必须带一个<b>本机令牌</b>（服务启动时随机生成、只注入本页面）
+      ⇒ <b>别的网页换不掉你的 Key</b>。<br>
+      ★★★ <b>环境变量优先</b>：若你已经在系统里设了 <code>DEEPSEEK_API_KEY</code>，这里会<b>拒绝保存并说明</b>
+      （★ 不假装成功）。
+    </div>
+    <label>API Key（<span id="cfgKeyState">读不到</span>）</label>
+    <input id="cfgKey" type="password" placeholder="sk-…（留空 = 清除）" autocomplete="off">
+    <div class="sub" id="cfgKeyMask" style="display:none"></div>
+    <label>API 地址（base_url）</label>
+    <input id="cfgBase" placeholder="https://api.deepseek.com">
+    <label>模型名（model）</label>
+    <input id="cfgModel" placeholder="deepseek-chat">
+    <div class="row">
+      <button class="btn" id="cfgClose">关闭</button>
+      <button class="btn" id="cfgTest">测连通</button>
+      <button class="btn" id="cfgKeySave">保存 Key</button>
+      <button class="btn pri" id="cfgSave">保存</button>
+    </div>
+    <div id="testOut"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ══════════════════════════════════════════════════════════════════
+   拆解器（外发 · 最精简版）· 前端
+   ★★ 2026-10-12 改：★ **两个档位**（★ 轻档 · ★ 工作 / 护根）—— ★ 依持有方判《判断·护根该不该是唯一档位》：
+     ★ **`mode` 仍锁在轻档**（★ 重档不做）；★ 而 `protector` **由下面那个勾选框决定**：
+       · 不勾（默认）= **工作模式**：正常给答案、能干活；★ 仅对「人的状态」做辨认时只描述不评价；
+       · 勾上 = **护根模式**：只描述、不评价、只给路、不给答案。
+     ★★★ 依据（★ 装载件 `:507` / `:509` 逐字）：
+       `:507` - **工作模式（默认）**：不整体启用三条锚点（**否则无法干活**）——用户要答案就给答案。
+       `:509` - **护根模式**（用户说出「进入护根模式」）：整体切换——只描述、只给路、只看见，不给答案。
+     ★★★★ 故 **护根只能由用户显式开**（★ 默认不勾）—— ★ 它是一个动作，不是一个默认值。
+   ★ 没有文档库、没有 OCR、没有账本面板 —— ★ 那些是原版的业务面，本工具不带。
+   ══════════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+const chatEl = $("chat"), inp = $("inp"), sendBtn = $("send"), stopBtn = $("stop");
+
+/* ---------- 本机凭据 ----------
+   服务启动时生成一枚 token，注入本页 <meta>；所有 /api/* 请求都带上它。
+   它证明"请求来自本机这份页面"，不是"用户已登录"（本服务只在 127.0.0.1）。  */
+const TOKEN = (document.querySelector('meta[name="rootthink-token"]') || {}).content || "";
+const _fetch = window.fetch.bind(window);
+window.fetch = async (url, opt) => {
+  opt = opt || {};
+  const sameApi = typeof url === "string" && url.startsWith("/api/");
+  if (sameApi) opt.headers = Object.assign({}, opt.headers || {}, {"X-Rootthink-Token": TOKEN});
+  const resp = await _fetch(url, opt);
+  /* 令牌每次服务启动换新：旧窗口的令牌过期 ⇒ 全部请求 403。碰到就整页刷新一次拿新令牌。 */
+  if (sameApi && resp.status === 403 && !sessionStorage.getItem("rt-token-reload")) {
+    sessionStorage.setItem("rt-token-reload", "1");
+    location.reload();
+    return new Promise(() => {});
+  }
+  if (sameApi && resp.ok) sessionStorage.removeItem("rt-token-reload");
+  return resp;
+};
+const api = (url, opts = {}) => fetch(url, opts);
+
+/* ---------- 小工具 ---------- */
+/* ★★★ 滚动规矩（2026-10-12 重定 · ★ 三条）：
+   ① ★ **发出去 → 无条件拉到底**（★ 用户主动动作，不该看他刚才翻到哪儿）。
+      ★ 旧法错在哪：★ 它在**追加完新消息之后**才判 `atBottom()`，★ 而那条新消息自身就 > 60px
+      ⇒ 判出来"不在底部" ⇒ **一次都不滚** ⇒ ★★ 这就是「输入问题后界面不往下拉」的真因
+      （★ 短消息偶尔能滚、长消息必不滚 ⇒ ★ 看着像随机，其实是阈值）。
+   ② ★ **本条回答没超一屏 → 贴着底部**（★ 反正整条都在屏里，跟随不会害人）。
+   ③ ★★ **本条回答一旦超过一屏 → 就地冻住**：★ 把视图**停在它开头**（最顶端），
+      等用户读完**自己往下拉**；★ 此后本轮**不再自动跟随**。
+   ★ 两个状态位：`stick`=是否跟随；`frozen`=本轮是否已"超屏冻住"过。
+     ★ 冻过之后点「↓ 回到最新」= ★ **恢复跟随**（★ 那是用户显式要看最新），
+       ★ 但 **不再二次跳回顶端** —— ★ 否则每点一次被弹回去，就成了新的"拽人"。 */
+let stick = true, frozen = false;
+function atBottom(){ return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 60; }
+function toBottom(){ chatEl.scrollTop = chatEl.scrollHeight; }
+function showJump(on){ $("jumpBtn").classList.toggle("show", !!on); }
+function followScroll(){          /* ★ 追加内容之后（★ 发问 / 回放历史） */
+  if (atBottom()) toBottom();
+  showJump(!atBottom());
+}
+function anchorTop(el){           /* ★ 把本条回答的开头贴到可视区顶部（★ 留 10px 呼吸） */
+  const r = el.getBoundingClientRect(), c = chatEl.getBoundingClientRect();
+  const want = chatEl.scrollTop + (r.top - c.top) - 10;
+  chatEl.scrollTop = Math.max(0, Math.min(want, chatEl.scrollHeight - chatEl.clientHeight));
+}
+function streamFollow(holder){    /* ★ 流式每来一段就调它（★ 只读 holder 的高度，不猜） */
+  if (!stick){                    /* ★ 不跟随：★ 也要**每段刷新浮钮** ——
+                                     ★ 因为内容在长高而"滚动事件不会再触发"，★ 只靠 scroll 事件会让浮钮**漏显**。 */
+    showJump(!atBottom());
+    return;
+  }
+  if (frozen || holder.offsetHeight <= chatEl.clientHeight){ toBottom(); return; }
+  frozen = true; stick = false;   /* ★ 超过一屏 ⇒ 冻住 */
+  anchorTop(holder);              /* ★ 顶端停住 —— 用户读完自己往下拉 */
+  showJump(!atBottom());          /* ★ 冻住那一刻就可能已"离底够远"，★ 立刻刷新一次，不等下一个 scroll 事件 */
+}
+chatEl.addEventListener("scroll", () => {
+  const b = atBottom();
+  showJump(!b);
+  if (!b) stick = false;          /* ★ 用户自己离开底部 ⇒ 停跟随（★ 不再每字把人拽回去） */
+});
+$("jumpBtn").onclick = () => { stick = true; toBottom(); showJump(false); };
+let _toastT = 0;
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(_toastT); _toastT = setTimeout(() => (t.style.display = "none"), 1900);
+}
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function copyText(s, cb){
+  navigator.clipboard.writeText(s).then(() => cb(true)).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = s; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try{ ok = document.execCommand("copy"); }catch(e){}
+    ta.remove(); cb(ok);
+  });
+}
+
+/* ---------- markdown 渲染（★ 极简但稳） ----------
+   ★★ 一条纪律（踩过坑）：**分类在原始行上做，内容先 esc** ——
+      若整篇先 esc，`>` 会变成 `&gt;` ⇒ 引用与表格前缀永远认不出来。 */
+
+/* ★★★ typo()：中文标点归一（★ 可读性改造的第一件事）
+   ★★ 为什么值得做：模型输出的中文里**经常夹着英文直引号** `"…"` —— 那在中文排版里是
+     ★ 明显的"硌眼"处（右引号与中文挤在一起时会显得断开）。★ 实测两轮输出里各有 2 处。
+   ★★ 做法：**只处理引号与省略号**（安全），★ 不碰任何其他字符。
+   ★★★ 一处**顺序坑**（★ 单元测试当场抓到的）：本函数跑在 `esc()` **之后** ——
+     ★ 那时 `"` 已经变成实体 `&quot;`、`'` 变成 `&#39;` ⇒
+     ★★ 若只 replace `"`，**一个都匹配不到**（而代码"看着是对的"⇒ 典型的坏得看不出来）。
+     ★ 故这里**同时认**原始字符与实体两种写法。
+   ★★ 配对判定：用"奇偶"而不是"看前后是不是中文" ——
+     ★ 后者对 `"项目"与"发布"` 这种**连续成对**会判错。 */
+function typo(s){
+  let open = true;
+  s = s.replace(/&quot;|"/g, () => { open = !open; return open ? "\u201d" : "\u201c"; });
+  s = s.replace(/&#39;|'/g, () => { open = !open; return open ? "\u2019" : "\u2018"; });
+  s = s.replace(/\.\.\./g, "\u2026");
+  return s;
+}
+
+function inline(s){
+  let t = esc(s);
+  /* ★ 行内代码**先抠出来**（★ 免得里面的引号/星号被后面的规则吃掉），最后再放回。
+     ★★ 用占位符而不是"跳过匹配"—— 后者要写复杂的负向断言（容易出错）。 */
+  const codes = [];
+  t = t.replace(/`([^`]+)`/g, (m, a) => {
+    codes.push(a);
+    return "\u0000C" + (codes.length - 1) + "\u0000";
+  });
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+  t = t.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+    (m, a, b) => '<a href="' + b + '" target="_blank" rel="noopener">' + a + "</a>");
+  /* ★ 文字部分做中文标点归一（★ 在代码已抠出之后 —— 代码里的引号**不能**动） */
+  t = typo(t);
+  /* ★ 代码放回（★ 代码内容**只 esc、不 typo**） */
+  t = t.replace(/\u0000C(\d+)\u0000/g, (m, i) => "<code>" + codes[+i] + "</code>");
+  return t;
+}
+
+/* ★★ promoteHead()：把「独行加粗」提升为段落小标题（★ 本场景的 **问** / **面** / **路**）
+   ★★ 判据（三条同时成立才算，★ 宁可漏判不可误判）：
+     ① 这些行**自己构成一个块**（由 md() 的段落聚合保证：它与上下都隔了空行）；
+     ② 块内容**整体就是一个加粗片段**（`**X**`），★ 前后不许再有别的文字；
+     ③ X **够短**（≤ 12 字）—— ★ 长句子即使整句加粗，也还是句子，不是小标题。
+   ★★★ 为什么这条对"可读性"是大头：不提升时，这些"骨"会和正文**同一个字号、同一段距**
+     ⇒ 读者要靠"猜"才知道进入下一节；提升后它们有自己的上方留白与左侧色条 ⇒ 层次一眼可见。
+   ★★★ 一处**性能坑**（★ 实测：node 跑到 4 GB 内存爆掉）：
+     ★ 初版正则该用 `(?:[^<]*<b>[^<]*<\/b>[^<]*)+` —— ★ 那个 `+` 外面套一层"组"，
+     ★★ 遇到不匹配的长文本会**指数回溯**（同一个位置被反复尝试各种切法）。
+     ★ 修法：**只做"整块就是一个 <b>…</b>"的精确判定** —— ★ 不用通配扫描、不用嵌套量词。
+     ★★ 教训：正则的"匹配能力"超过需要，就是给内存埋雷（★ 而它在小样本上看不出来）。 */
+function promoteHead(html){
+  const RE = /<p><b>([^<]{1,12})<\/b><\/p>/g;
+  return html.replace(RE, (all, txt) => {
+    const t = txt.trim();
+    if (!t) return all;
+    return '<p class="msghd"><b>' + t + "</b></p>";
+  });
+}
+
+function md(src){
+  /* ★★★ 第一步：行尾归一（★ 这一行是**必修**，不是美化）。
+     ★★ 实测到的真事故（★ 会**死循环爆内存**，而且是在 800 字的正常回答上）：
+       · 行尾一律按 `\n` 切 ⇒ 每行**末尾留一个 `\r`**（Windows/剪贴板粘贴的文本极常见）；
+       · 外层判"这行是不是列表"用的是 `/^\s*[-*+]\s+(.*)$/` —— ★ `$` **过不去 `\r`** ⇒ 判"不是"；
+       · 内层（段落聚合）判"是不是该停"用的是 `/^\s*[-*+]\s/` —— ★ 它**不要求收尾** ⇒ 判"是"；
+       · ⇒ 两边判据不一致 ⇒ 段落聚合**一行都没吃、`i` 不前进** ⇒ `while` 空转 ⇒ **爆内存**。
+     ★★ 修法：**在入口把行尾一次性归一** —— `\r\n` / `\r` 全部当 `\n`。
+       ★ 这样内外判据看的是**同一个字符串**，不可能再"一个说是一个说不是"。
+     ★★ 教训（★ 记在这里，因为它是本体系的老账）：**同一件事有两处判据、且两处写法不一致**
+       ⇒ 危险不在"判错"，而在"判错之后还继续跑"。 */
+  const lines = String(src == null ? "" : src).replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  let i = 0, inUl = false, inOl = false;
+  const closeList = () => {
+    if (inUl) { out.push("</ul>"); inUl = false; }
+    if (inOl) { out.push("</ol>"); inOl = false; }
+  };
+  while (i < lines.length) {
+    const raw = lines[i];
+    /* 代码块 */
+    if (/^\s*```/.test(raw)) {
+      closeList();
+      const buf = []; i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++;
+      out.push("<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
+      continue;
+    }
+    /* 分隔线 */
+    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(raw)) { closeList(); out.push("<hr>"); i++; continue; }
+    /* 标题 */
+    let m = raw.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
+    if (m) { closeList(); const lv = Math.min(6, m[1].length + 2); out.push("<h" + lv + ">" + inline(m[2]) + "</h" + lv + ">"); i++; continue; }
+    /* 表格：本行含 | 且下一行是分隔行 */
+    if (/\|/.test(raw) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
+      closeList();
+      const cells = r => r.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map(x => x.trim());
+      const head = cells(raw);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim() !== "") { rows.push(cells(lines[i])); i++; }
+      let t = "<table><thead><tr>" + head.map(c => "<th>" + inline(c) + "</th>").join("") + "</tr></thead><tbody>";
+      for (const r of rows) t += "<tr>" + r.map(c => "<td>" + inline(c) + "</td>").join("") + "</tr>";
+      out.push(t + "</tbody></table>");
+      continue;
+    }
+    /* 引用 */
+    m = raw.match(/^\s{0,3}>\s?(.*)$/);
+    if (m) {
+      closeList();
+      const buf = [];
+      while (i < lines.length && /^\s{0,3}>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^\s{0,3}>\s?/, "")); i++; }
+      out.push("<blockquote>" + buf.map(x => inline(x) || "<br>").join("<br>") + "</blockquote>");
+      continue;
+    }
+    /* 无序列表 */
+    m = raw.match(/^\s*[-*+]\s+(.*)$/);
+    if (m) {
+      if (inOl) { out.push("</ol>"); inOl = false; }
+      if (!inUl) { out.push("<ul>"); inUl = true; }
+      out.push("<li>" + inline(m[1]) + "</li>"); i++; continue;
+    }
+    /* 有序列表 */
+    m = raw.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (m) {
+      if (inUl) { out.push("</ul>"); inUl = false; }
+      if (!inOl) { out.push("<ol>"); inOl = true; }
+      out.push("<li>" + inline(m[1]) + "</li>"); i++; continue;
+    }
+    /* 空行 */
+    if (raw.trim() === "") { closeList(); i++; continue; }
+    /* 普通段落 */
+    closeList();
+    const buf = [];
+    const _p0 = i;
+    while (i < lines.length && lines[i].trim() !== "" &&
+           !/^\s*```/.test(lines[i]) && !/^\s{0,3}#{1,6}\s/.test(lines[i]) &&
+           !/^\s*[-*+]\s/.test(lines[i]) && !/^\s*\d+[.)]\s/.test(lines[i]) &&
+           !/^\s{0,3}>\s?/.test(lines[i])) { buf.push(lines[i]); i++; }
+    /* ★★ 兜底护栏（★ 防"判据不一致 ⇒ 空转 ⇒ 爆内存"这一类再次发生）：
+       ★ 段落聚合**一行都没吃**（`i` 没前进）⇒ ★ 说明上面各分支与这里的停止条件
+         **至少有一处不一致**（★ 那正是刚修的那个 `\r` 事故）。
+       ★★ 此时**必须强制前进一行**：宁可这一段渲染得难看一点，★ 也绝不能空转
+         （★ 空转的后果不是"显示错"，而是**整个页面卡死**——★ 用户看到的是"它没反应"，
+           而他完全不知道发生了什么）。
+       ★ 并把这一行如实画出来（★ 不静默吞掉）：让人能看见"这里有一行没被规则吃下"。 */
+    if (i === _p0) {
+      i++;
+      out.push('<p style="color:var(--warn)">' + inline(lines[_p0]) + "</p>");
+      continue;
+    }
+    out.push("<p>" + buf.map(inline).join("<br>") + "</p>");
+  }
+  closeList();
+  return promoteHead(out.join(""));
+}
+
+/* ---------- 会话 ---------- */
+let curSession = null, sending = false, abortCtl = null;
+
+function dateLabel(epoch){
+  const d = new Date(epoch * 1000), now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((today - day) / 86400000);
+  if (diff < 1) return "今天";
+  if (diff < 2) return "昨天";
+  if (diff < 7) return "近 7 天";
+  return "更早";
+}
+async function loadSessions(){
+  const list = await (await api("/api/sessions")).json();
+  /* 空会话不值钱：除当前这一个外，把多余的空会话清掉（不在左边堆一排"新对话"） */
+  const empt = list.filter(s => s.turns === 0 && s.id !== curSession);
+  for (const s of empt.slice(1)) api("/api/sessions/" + s.id, {method: "DELETE"});
+  const el = $("sessList"); el.innerHTML = "";
+  let last = "";
+  for (const s of list){
+    const lb = dateLabel(s.updated);
+    if (lb !== last){ last = lb; const h = document.createElement("div"); h.className = "sessHead"; h.textContent = lb; el.appendChild(h); }
+    const d = document.createElement("div");
+    d.className = "sess" + (s.id === curSession ? " on" : "");
+    d.innerHTML = '<span class="t" title="' + esc(s.title) + '（双击可重命名）">' + esc(s.title) + "</span>"
+                + '<span class="more" title="重命名 / 删除">⋯</span>';
+    d.querySelector(".t").ondblclick = e => { e.stopPropagation(); renameSession(s.id, s.title); };
+    d.querySelector(".more").onclick = e => { e.stopPropagation(); showSessMenu(e.target, s); };
+    d.onclick = () => openSession(s.id);
+    el.appendChild(d);
+  }
+  if (!el.querySelector(".sess")) el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--sub);text-align:center">还没有对话</div>';
+}
+async function newSession(){
+  if (sending){ toast("回答还在生成 —— 先「停止」或等它完成"); return; }
+  const s = await (await api("/api/sessions", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"})).json();
+  curSession = s.id; renderTurns([]); loadSessions(); inp.focus();
+}
+async function openSession(id){
+  if (sending){ toast("回答还在生成 —— 先「停止」或等它完成"); return; }
+  curSession = id;
+  const s = await (await api("/api/sessions/" + id)).json();
+  renderTurns(s.turns || []); loadSessions();
+}
+async function delSession(id){
+  if (!confirm("删除这段对话？（不可恢复）")) return;
+  await api("/api/sessions/" + id, {method: "DELETE"});
+  if (curSession === id){ curSession = null; renderTurns([]); }
+  loadSessions();
+}
+async function renameSession(id, old){
+  const t = prompt("重命名对话：", old);
+  if (t === null || !t.trim() || t.trim() === old) return;
+  await api("/api/sessions/" + id, {method: "PATCH", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({title: t.trim()})});
+  loadSessions();
+}
+function showSessMenu(anchor, s){
+  const m = $("sessMenu");
+  m.innerHTML = '<div class="mi" data-a="rename">✏️ 重命名</div><div class="mi danger" data-a="del">🗑 删除对话…</div>';
+  m.classList.add("show");
+  const r = anchor.getBoundingClientRect();
+  m.style.top = Math.min(r.bottom + 5, innerHeight - 96) + "px";
+  m.style.left = Math.max(6, Math.min(r.left - 96, innerWidth - 146)) + "px";
+  m.onclick = e => {
+    const a = e.target.dataset.a;
+    if (a === "rename") renameSession(s.id, s.title);
+    else if (a === "del") delSession(s.id);
+    m.classList.remove("show");
+  };
+}
+document.addEventListener("click", () => $("sessMenu").classList.remove("show"));
+
+/* ---------- 渲染 ---------- */
+function emptyNode(){
+  const d = document.createElement("div");
+  d.id = "empty";
+  /* ★★★★★ 2026-10-13 改（★ 出处：《优化建议》第 7 条「把最小入口提到最前当默认动作」）
+     ★ 建议原话：★「★ 那句『**我现在在哪里？**』才是能**直接给人的**，★ 其余是给实现者看的。」
+     ★★ 故：★ **第一句就是给人看的那个入口**（大字），★ 而原来那些"它怎么用 / 它会给你 /
+       ★ 它不会给你"**降到下面**（★ 它们是**说明书**，★ 不是入口）。
+     ★★★ 而三层信息**降显**（★ 与本次那套分级同源）：
+       · **入口**（现在在哪儿）—— ★ 大字 · ★ 直接可答
+       · **用法**（怎么用它）—— ★ 正常小字
+       · **边界**（它不给什么）—— ★ 淡色（★ 读者要时再看） */
+  d.innerHTML = "<h2>你现在在哪里？</h2>"
+    + '<p class="entry">这一句，你可以直接答 —— 说清它，比说对更重要。</p>'
+    + '<div class="hint">'
+    + "<b>怎么用它</b>：把卡住你的那句话原样打进来（越具体越好），别急着要答案。<br>"
+    + "<b>它会给你</b>：你真正卡在哪一句 · 这个问题有几面 · 有哪几条路、各自的代价。<br>"
+    + '<span class="muted"><b>它不会给你</b>：<b>「你应该……」</b>。'
+    + "★ 一切结论归还给你 —— 这不是保守，是它的姿态。</span>"
+    + "</div>";
+  return d;
+}
+/* ★★ splitFoot()：把正文尾巴上的**两行落款**摘出来，单独用 .foot 渲染（★ 不改一字）
+   ★★ 为什么必须摘：落款是**凭据**不是正文 —— 混在正文里时它与最后一段**同字号同字重**，
+     ★ 读者会把它当成"又一段话"读下去；摘出来（小一号、灰、虚线上框）后，
+     ★ 正文到哪儿结束、凭据从哪儿开始，**一眼分得清**（这是"条理"的一部分）。
+   ★ 判据：正文**末尾**以"位："或"位:"起头的那一行 → 连同它之后的行，全部算落款。
+   ★★ 只认**末尾**：正文中间若出现"位："（例如在讲这个词本身），不该被误摘。 */
+function splitFoot(text){
+  const lines = String(text || "").split("\n");
+  let k = -1;
+  for (let i = lines.length - 1; i >= 0; i--){
+    const s = lines[i].trim();
+    if (!s) continue;
+    if (/^位[：:]/.test(s)){ k = i; break; }
+    /* ★ 显化声明那行单独出现时也算（★ 判据是中段不许先看到正文句子） */
+    if (/^本回答是显化/.test(s)){ k = i; continue; }
+    /* ★ 从末尾往上最多探 4 行，再远就不认了（免得把正文整段吞掉） */
+    if (lines.length - i > 4) break;
+  }
+  if (k < 0) return {body: text, foot: ""};
+  return {body: lines.slice(0, k).join("\n").replace(/\s+$/, ""),
+          foot: lines.slice(k).join("\n").trim()};
+}
+
+/* ★★★★ splitSections()：把正文再切成**三级**（★ 2026-10-12 加 · ★ 见上面那段 CSS 注释）
+   ★★ 判据：★ **标记行** —— ★ 它们每轮都在，★ 且形状固定 ⇒ ★ 可机检，★ 不猜语义。
+     · 补充段起始：★ `**可能还没看见的那一面。**`（★ 变体：「你可能没看见的那一面」·「还有一面」）
+     · 几条路起始：★ `**几条路，只列，不选。**`（★ 变体：「三条路」「两条路，代价不同」…）
+   ★★★ 只切**第一次**出现（★ 后面若再出现同名标记 ⇒ ★ 仍归该段，★ 免得切成碎片）。
+   ★★★★ 切不出来 ⇒ ★ 原样返回（★ 宁可不动，★ 不可错切）。 */
+const _HDR_EXTRA = /^\*{0,2}\s*(?:你\s*)?(?:可能|也许)?\s*还没(?:有)?看见的那一面[。.．:]?\s*\*{0,2}$/;
+const _HDR_ROADS = /^\*{0,2}\s*(?:\d+\s*|[一二三四五六七八九十两几]+)?条路(?:[，,、][^。.．:：]*)?[。.．:：]?\s*\*{0,2}$/;
+function splitSections(text){
+  const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+  let kx = -1, kr = -1;
+  for (let i = 0; i < lines.length; i++){
+    const s = lines[i].trim();
+    if (!s) continue;
+    if (kx < 0 && _HDR_EXTRA.test(s)){ kx = i; continue; }
+    if (kr < 0 && _HDR_ROADS.test(s)){ kr = i; break; }
+  }
+  /* ★ 两标记都有 ⇒ 按位置切；★ 只有一个 ⇒ 剩下那条到末尾 */
+  if (kx >= 0 && kr >= 0 && kx < kr)
+    return {main: lines.slice(0, kx).join("\n"), extra: lines.slice(kx, kr).join("\n"),
+            roads: lines.slice(kr).join("\n")};
+  if (kx >= 0)
+    return {main: lines.slice(0, kx).join("\n"), extra: lines.slice(kx).join("\n"), roads: ""};
+  if (kr >= 0)
+    return {main: lines.slice(0, kr).join("\n"), extra: "", roads: lines.slice(kr).join("\n")};
+  return {main: String(text || ""), extra: "", roads: ""};
+}
+
+function addMsg(role, content, opts){
+  opts = opts || {};
+  const wrap = document.createElement("div");
+  if (role === "user"){
+    wrap.className = "msg user";
+    wrap.textContent = content;
+  } else {
+    wrap.className = "msg ai" + (opts.prot !== false ? " prot" : "");
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    /* ★★★ 2026-10-12：★ 标跟着**本轮实际档位**走（★ 不再硬编码"护根"）——
+       ★★ 回放（renderTurns）走的是 `t.protector`，★ 而实时这一轮走 `opts.prot`。 */
+    const _prot = (opts.prot !== undefined) ? !!opts.prot
+                 : !!($("prot") && $("prot").checked);
+    meta.textContent = "🪞 拆解器 · " + (_prot ? "护根" : "工作模式") + " · 轻档";
+    const body = document.createElement("div");
+    body.className = "body";
+    const sp = splitFoot(content);
+    /* ★★★★ 分级降显：正文全字号 · 补充小字淡 · 几条路折起来（★ 见 splitSections 注释） */
+    const sec = splitSections(sp.body);
+    body.innerHTML = md(sec.main);
+    wrap.appendChild(meta); wrap.appendChild(body);
+    if (sec.extra){
+      const e = document.createElement("div");
+      e.className = "extra";
+      e.innerHTML = md(sec.extra);
+      wrap.appendChild(e);
+    }
+    if (sec.roads){
+      const d = document.createElement("details");
+      d.className = "roads";
+      const sum = document.createElement("summary");
+      sum.textContent = "几条路，各自的代价（点开看）";
+      const rb = document.createElement("div");
+      rb.className = "rb";
+      /* ★ 折起来时**不显示那行标题**（★ 标题已进 summary）—— ★ 只留路本身 */
+      rb.innerHTML = md(sec.roads.split("\n").slice(1).join("\n"));
+      d.appendChild(sum); d.appendChild(rb);
+      wrap.appendChild(d);
+    }
+    /* ★ 落款（两行）单独一块，小字灰字，与正文之间一道虚线 */
+    if (sp.foot){
+      const f = document.createElement("div");
+      f.className = "foot";
+      f.innerHTML = sp.foot.split("\n").filter(x => x.trim())
+        .map(x => "<div>" + inline(x) + "</div>").join("");
+      wrap.appendChild(f);
+    }
+    if (opts.foot) wrap.appendChild(opts.foot);
+  }
+  chatEl.appendChild(wrap);
+  followScroll();          /* ★ 贴底就跟着滚；不贴底 ⇒ 亮「↓ 回到最新」（★ 见顶部「滚动规矩」） */
+  return wrap;
+}
+function renderTurns(turns){
+  chatEl.innerHTML = "";
+  if (!turns.length){ chatEl.appendChild(emptyNode()); return; }
+  for (const t of turns){
+    if (t.role === "user") addMsg("user", t.content);
+    else {
+      const foot = document.createElement("div");
+      foot.className = "foot";
+      if (t.incomplete) foot.innerHTML += '<span class="warnline">★ 本轮未完成：' + esc(t.error || "") + "</span>";
+      if (t.usage && t.usage.total_tokens) foot.innerHTML += "<span>" + t.usage.total_tokens + " tokens</span>";
+      addMsg("assistant", t.content, {foot: foot.querySelector("span") ? foot : null,
+                                      prot: !!t.protector});
+    }
+  }
+  /* ★ 切会话 = 一次新的"读书姿势"：★ 回到跟随、清零冻结位，并落到底部 */
+  stick = true; frozen = false; toBottom();
+  document.body.classList.remove("side-open");   /* ★ 窄屏：选完会话顺手收起抽屉 */
+}
+/* ---------- 发送（SSE 流式） ---------- */
+function setSending(on){
+  sending = on;
+  sendBtn.disabled = on;
+  stopBtn.hidden = !on;
+  inp.disabled = on;
+}
+async function send(){
+  const m = inp.value.trim();
+  if (!m || sending) return;
+  if (!curSession){
+    const s = await (await api("/api/sessions", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"})).json();
+    curSession = s.id;
+  }
+  /* ★★★ 发送 = 用户主动动作 ⇒ ★ 本轮从"跟随"重新开始（★ 不管他刚才翻到哪儿） */
+  stick = true; frozen = false;
+  chatEl.querySelector("#empty")?.remove();
+  addMsg("user", m);
+  inp.value = "";
+  setSending(true);
+
+  /* ★★★ 2026-10-12：★ **本轮用哪一档，就以哪一档标注** —— ★ 取发送那一刻的勾选值
+     （★ 不许硬编码 `true`：★ 那会让"工作模式"那一轮被标成"护根"）。 */
+  const _protThisTurn = !!($("prot") && $("prot").checked);
+  const holder = addMsg("assistant", "", {prot: _protThisTurn});
+  const bodyEl = holder.querySelector(".body");
+  bodyEl.innerHTML = '<span style="color:var(--sub)"><span class="spin"></span>正在思考…</span>';
+  toBottom();          /* ★ 发出去就拉到底 —— ★ 立刻看到"我这一问 + 正在思考" */
+  /* ★★ 2026-10-15 加 errMsg：上游明确报错时**不许被收尾的通用文案盖掉** ——
+     ★ 实测（持有方今晨亲历）：上游 503「Service is too busy」被盖成「链路断了」，
+       ★★ 用户因此**看不到真正的原因**，只好来问"为什么失效"。
+     ★ 纪律：**具体错误 > 泛化文案** —— ★ 有具体原因时，永远显示具体原因。 */
+  let acc = "", footEl = null, truncated = null, notOut = null, errMsg = null;
+
+  /* ★★ 收尾重绘（★ 可读性的关键一步）：
+     ★ 流式过程中**每来一段就整篇重排**（md(acc)）—— 那对"边打字边看"是必要的；
+     ★ 但**落款必须在收尾时才能摘**（流到一半时"位："那行还没出现/还没写完，
+       ★★ 若边流边摘，中途会看到落款区块**忽有忽无**、正文块跳一下）。
+     ★ 故：收尾时用**同一套渲染**（addMsg 的路径 = splitFoot + md）重绘一次 ——
+       ★★ 保证"流式看"与"翻历史看"**渲染完全同形**（★ 两套渲染 = 两个会漂的地方）。 */
+  const redrawFinal = () => {
+    const sp = splitFoot(acc);
+    bodyEl.innerHTML = md(sp.body);
+    let f = holder.querySelector(".foot.bodyfoot");
+    if (sp.foot){
+      if (!f){
+        f = document.createElement("div");
+        f.className = "foot bodyfoot";
+        holder.insertBefore(f, footEl);
+      }
+      f.innerHTML = sp.foot.split("\n").filter(x => x.trim())
+        .map(x => "<div>" + inline(x) + "</div>").join("");
+    } else if (f){ f.remove(); }
+  };
+
+  const markFoot = () => {
+    if (!footEl){ footEl = document.createElement("div"); footEl.className = "foot"; holder.appendChild(footEl); }
+    footEl.innerHTML = "";
+    if (truncated) footEl.innerHTML += '<span class="warnline">★ 输出触顶：上游以 finish_reason=length 停止 —— 这段回答可能被截短了</span>';
+    if (notOut) footEl.innerHTML += '<span class="warnline">★ 底判：本轮不算输出</span>';
+    if (usage.total_tokens) footEl.innerHTML += "<span>" + usage.total_tokens + " tokens</span>";
+  };
+  const usage = {total_tokens: 0};
+
+  abortCtl = new AbortController();
+  try {
+    const resp = await api("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: curSession, message: m,
+                            protector: !!($("prot") && $("prot").checked)}),
+      signal: abortCtl.signal
+    });
+    if (!resp.ok && resp.status !== 200){
+      let detail = "";
+      try { detail = (await resp.json()).detail || ""; } catch(e){}
+      bodyEl.innerHTML = '<span class="warnline">★ 请求被拒（' + resp.status + "）：" + esc(detail) + "</span>";
+      setSending(false); return;
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true){
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0){
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        for (const line of chunk.split("\n")){
+          if (!line.startsWith("data:")) continue;
+          const pl = line.slice(5).trim();
+          if (!pl) continue;
+          let d; try { d = JSON.parse(pl); } catch(e){ continue; }
+          if (d.delta){ acc += d.delta; redrawFinal(); streamFollow(holder); }
+          else if (d.error){
+            /* ★★ 2026-10-15 修：**先记下来再显示** —— ★ 否则流一结束就被收尾那句通用文案覆盖掉。 */
+            errMsg = d.error;
+            bodyEl.innerHTML = md(acc) + '<p class="warnline">★ ' + esc(d.error) + "</p>";
+          }
+          else if (d.usage){ usage.total_tokens = d.usage.total_tokens || 0; markFoot(); }
+          else if (d.done){
+            if (d.truncated) truncated = true;
+            if (d.not_output){ notOut = true; }
+            redrawFinal();
+            markFoot();
+          }
+        }
+      }
+    }
+    if (errMsg){                 /* ★ 上游给过明确错误 ⇒ ★ 保留它（★ 不重绘 body，免得盖掉） */
+      markFoot();
+    } else if (!acc) bodyEl.innerHTML = '<span class="warnline">★ 服务没有返回内容（★ 不是"空白回答"，是链路断了 —— 看一眼启动窗口的日志）</span>';
+    else redrawFinal();          /* ★ 收尾再重绘一次（★ 落款到这一刻才齐） */
+  } catch(e){
+    if (e && e.name === "AbortError"){
+      if (!acc) bodyEl.innerHTML = '<span style="color:var(--sub)">（已停止）</span>';
+    } else {
+      bodyEl.innerHTML = md(acc) + '<p class="warnline">★ 连接中断：' + esc(String(e)) + "</p>";
+    }
+  } finally {
+    setSending(false);
+    abortCtl = null;
+    loadSessions();
+    inp.focus();
+  }
+}
+stopBtn.onclick = () => { if (abortCtl) abortCtl.abort(); };
+sendBtn.onclick = send;
+inp.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); }
+});
+inp.addEventListener("input", () => { inp.style.height = "auto"; inp.style.height = Math.min(200, inp.scrollHeight) + "px"; });
+
+/* ---------- 导出 ---------- */
+$("exportBtn").onclick = async () => {
+  if (!curSession){ toast("先有一段对话再导出"); return; }
+  try {
+    const r = await api("/api/sessions/" + curSession + "/export");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob();
+    const cd = r.headers.get("Content-Disposition") || "";
+    let name = "对话导出.md";
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
+    if (m) { try { name = decodeURIComponent(m[1]); } catch(e){} }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  } catch(e){ toast("导出失败：" + e); }
+};
+
+/* ---------- 设置 ---------- */
+function openCfg(){
+  $("mask").classList.add("show");
+  $("testOut").textContent = "";
+  api("/api/config").then(r => r.json()).then(c => {
+    $("cfgBase").value = c.base_url || "";
+    $("cfgModel").value = c.model || "";
+  }).catch(() => {});
+  /* ★ 2026-10-28（丙）：Key 那一栏单独读 —— 只回「配没配 + 掩码」，不回本体。 */
+  api("/api/key").then(r => r.json()).then(k => {
+    $("cfgKey").value = "";
+    $("cfgKeyState").textContent = k.key ? ("已配置 · " + k.mask) : "未配置";
+    const m = $("cfgKeyMask");
+    if (k.key){
+      m.style.display = "";
+      m.textContent = "★ 当前来源：" + (k.source || "?")
+        + (k.settable_via_http ? "" : "（★ 来自环境变量 —— 本页改不了它）");
+    } else { m.style.display = "none"; }
+    $("cfgKeySave").disabled = !k.settable_via_http;
+  }).catch(() => {});
+}
+$("cfgBtn").onclick = openCfg;
+$("cfgClose").onclick = () => $("mask").classList.remove("show");
+$("mask").onclick = e => { if (e.target === $("mask")) $("mask").classList.remove("show"); };
+/* ★ Esc 关设置弹窗 + 窄屏侧栏抽屉开关（★ 桌面版打磨 · 2026-10-12） */
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("mask").classList.contains("show")) $("mask").classList.remove("show");
+});
+$("sideToggle").onclick = () => document.body.classList.toggle("side-open");
+$("cfgSave").onclick = async () => {
+  const body = JSON.stringify({base_url: $("cfgBase").value.trim(), model: $("cfgModel").value.trim()});
+  const r = await api("/api/config", {method: "POST", headers: {"Content-Type": "application/json"}, body});
+  if (r.ok){ toast("已保存"); loadTop(); } else { toast("保存失败（HTTP " + r.status + "）"); }
+};
+$("cfgKeySave").onclick = async () => {
+  /* ★ 2026-10-28（丙）：写 key 走 /api/key —— ★ 它要求本机令牌。
+     ★★ 令牌在本页的 <meta name="rootthink-token"> 里（★ 由服务注入）。 */
+  const meta = document.querySelector('meta[name="rootthink-token"]');
+  const tok = meta ? meta.getAttribute("content") : "";
+  if (!tok){ toast("★ 拿不到本机令牌 —— 本页不是服务打开的那一份"); return; }
+  const v = $("cfgKey").value.trim();
+  try {
+    const r = await api("/api/key", {method: "POST",
+      headers: {"Content-Type": "application/json", "x-rootthink-token": tok},
+      body: JSON.stringify({api_key: v})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok){ toast("★ 拒绝（HTTP " + r.status + "）：" + (j.detail || "")); return; }
+    if (j.ok === false){ toast("★ 未保存：" + (j.why || "")); return; }
+    toast(v ? "Key 已保存" : "Key 已清除");
+    $("cfgKey").value = "";
+    openCfg();          /* ★ 重读一次，让状态栏跟着变 */
+    loadTop();
+  } catch(e){ toast("★ 保存失败：" + e); }
+};
+$("cfgTest").onclick = async () => {
+  $("testOut").textContent = "测试中…";
+  try {
+    const r = await api("/api/test", {method: "POST"});
+    const j = await r.json();
+    $("testOut").textContent = r.ok ? ("★ 连通：" + (j.reply || "（空回）")) : ("★ 失败：" + (j.detail || r.status));
+  } catch(e){ $("testOut").textContent = "★ 连不上：" + e; }
+};
+
+/* ---------- 顶栏状态 / 主题 ---------- */
+async function loadTop(){
+  try {
+    const c = await (await api("/api/config")).json();
+    $("topStatus").innerHTML = "<b>" + esc(c.model || "?") + "</b> · " + esc(c.base_url || "")
+      + (c.has_key ? "" : ' · <span style="color:var(--danger)">未设 Key</span>');
+    /* ★★ 未配置 key ⇒ 把指引**前置**到输入框上方（★ 见 #nokey 的注释：没 key 时打字注定被拒） */
+    const dismissed = sessionStorage.getItem("rt-nokey-x") === "1";
+    if (!c.has_key && !dismissed) $("nokey").classList.add("show");
+    else $("nokey").classList.remove("show");
+  } catch(e){ $("topStatus").textContent = ""; }
+}
+$("nokeyX").onclick = () => {
+  $("nokey").classList.remove("show");
+  try { sessionStorage.setItem("rt-nokey-x", "1"); } catch(e){}
+};
+$("themeBtn").onclick = () => {
+  document.body.classList.toggle("dark");
+  try { localStorage.setItem("rt-theme", document.body.classList.contains("dark") ? "dark" : "light"); } catch(e){}
+};
+if (localStorage.getItem("rt-theme") === "dark") document.body.classList.add("dark");
+
+/* ★★★★ 档位标签（★ 2026-10-12 加）：★ 顶上那个标**跟着勾选框走**（★ 它反映的是"下一轮用哪档"）。
+   ★★ 为什么不只看 `h.tier`：★ 档位是**请求级**的（★ 用户随时可改）——
+     ★ 故它以**界面当前的勾选状态**为准，★ 而 `h.tier` 只作兜底。
+   ★★★ 判据：★ **两处必须一致**（★ 顶部标 == 勾选框）—— ★ 否则界面自相矛盾。 */
+function syncTierTag(){
+  const on = !!($("prot") && $("prot").checked);
+  const el = $("tierTag");
+  if (!el) return;
+  el.textContent = "档位：" + (on ? "护根" : "工作模式");
+  el.title = on ? "护根模式：只描述、不评价、只给路、不给答案。取消勾选即回工作模式。"
+                : "工作模式（默认）：正常给答案、能干活；仅对「人的状态」做辨认时只描述不评价。";
+}
+const _protEl = $("prot");
+if (_protEl) _protEl.addEventListener("change", syncTierTag);
+/* ★★ 顶栏档位标签**可点**（★ 2026-10-12 · 治"没有切换按钮、点了没反应"）：
+   ★ 点它 = 翻转 composer 勾选框 —— 两处是**同一状态的两面**，★ 走同一个 change 事件
+   ⇒ syncTierTag 自动更新文案，**两处不会漂**（★ 不另设一份档位状态）。 */
+$("tierTag").addEventListener("click", () => {
+  const p = $("prot"); if (!p) return;
+  p.checked = !p.checked;
+  p.dispatchEvent(new Event("change"));
+  toast(p.checked ? "已切到护根模式：只描述、不评价、只给路" : "已切到工作模式：正常给答案");
+});
+
+/* ---------- 相位指纹（★ 它就是"相位规则指纹" = 场景层位表的 sha256 前 8 位） ---------- */
+api("/api/health", {headers: {"X-Rootthink-Token": TOKEN}}).then(r => r.json()).then(h => {
+  if (h.phase_fp) $("phaseTag").textContent = "相位 " + h.phase_fp;
+  if (h.tier && !$("prot")) $("tierTag").title = "档位：" + h.tier;
+  syncTierTag();
+}).catch(() => { syncTierTag(); });
+
+/* ---------- 启动 ---------- */
+(async function init(){
+  document.title = "拆解器 · 帮你看清问题";
+  curSession = null;
+  chatEl.appendChild(emptyNode());
+  syncTierTag();
+  loadSessions();
+  loadTop();
+  inp.focus();
+})();
+</script>
+</body>
+</html>

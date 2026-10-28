@@ -1,0 +1,65 @@
+# ============================================================================
+# 拆解器 · 开源版
+#
+# ★ 这个文件是按「代码里真实 import 了什么」推出来的，不是我凭印象写的。
+#   推导依据：对 `app/` 下 9 个 .py 做 `ast` 扫描，取所有 `import` / `from … import`
+#   的顶层模块名，减去标准库与本仓内部模块。
+#
+# ★★ 实测结果只有 4 个外部包（2026-10-28）：
+#     server.py → fastapi · uvicorn · pydantic · httpx
+#   而 `atomic_io` / `session_log` / `loop` / `archive` 是**本仓自己的模块**，
+#   不是依赖（它们在 app/ 里）。
+#
+# ★★★ 三条可选依赖（`check_criteria` / `criterion_status` / `direction_history`）
+#   **不在本仓、也不列在这里**：它们来自一个更完整的判据账，而 app 对它们的
+#   每一次引用都包在 `try/except` 里 —— 缺了会降级并**明说「未接」**，不静默跳过。
+#   要接它们，请把它们放到 `checks/` 下（见 README「可选：接判据账」）。
+# ============================================================================
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dissector"
+version = "0.1.0"
+description = "拆解器：帮你看清问题本身的桌面小工具 —— ★ 它不替你下结论。"
+readme = "README.md"
+requires-python = ">=3.10"
+# ★ 2026-10-28：定为 Apache-2.0（含专利授权与商标条款），全文见 LICENSE。
+license = { text = "Apache-2.0" }
+authors = [{ name = "拆解器 作者" }]
+keywords = ["problem-decomposition", "thinking-tool", "deepseek", "desktop-app"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Other/Nonlisted Topic",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+# ★ 仓库地址待定（开源件还没有远端）。
+# Homepage = "https://github.com/<owner>/dissector"
+
+# ★ 不提供 console_scripts：本应用是**桌面窗口**形态（`dissector.pyw` 起一个本机
+#   服务 + 打开窗口），不是命令行工具。★ 故「安装后敲一个命令」不是它的用法。
+#   ★★ 而 `python -m` 那条路留给第一次跑通的人（见 README「从零跑起来」）。
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
